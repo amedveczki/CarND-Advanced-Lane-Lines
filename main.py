@@ -30,3 +30,12 @@
 #  - Measure curvature (should be ~1km)
  
 # 8. Draw lanes and fill with color
+
+from calibration import calibration
+import glob
+
+CALIBRATION_IMAGES = "camera_cal/*.jpg"
+
+calib = calibration(True, True)
+calib.calibrate(glob.glob(CALIBRATION_IMAGES), 9, 6)
+calib.undistort(mpimg.imread(glob.glob(CALIBRATION_IMAGES)[1]))
