@@ -43,11 +43,22 @@ import cv2
 # cv2.COLOR_RGB2HLS, 2,
 
 def abs_sobel_thresh(img, sobel_kernel=3, thresh=(0, 255), orient='x'):
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+    # 105, 255 L, c2 (de van benne tul sok vilagos)
+# 160, 255 c3
+    #mpimg.imsave("fancy/channel0.jpg", grayto3(hls[:,:,0]))
+    #mpimg.imsave("fancy/channel1.jpg", grayto3(hls[:,:,1]))
+    #mpimg.imsave("fancy/channel2.jpg", grayto3(hls[:,:,2]))
+    
+    l = hls[:,:,1] * color_thresh(hls, 1, (105, 255)) * 0.6
+    s = hls[:,:,2] * color_thresh(hls, 2, (160, 255)) * 1.2
+    gray = np.maximum(np.uint8(s), np.uint8(l))
+    gray2 = grayto3(gray)
     if orient == 'x':
         sobel = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize = sobel_kernel)
     else:
         sobel = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize = sobel_kernel)
+
     abs_sobel = np.absolute(sobel)
     scaled_sobel = np.uint8(255*abs_sobel/np.max(abs_sobel))
 
@@ -56,20 +67,36 @@ def abs_sobel_thresh(img, sobel_kernel=3, thresh=(0, 255), orient='x'):
 
     return binary_output
 
+def grayto3(c):
+    return np.dstack((c,c,c))
+
 def color_thresh(img, channel_index, thresh):
-    channel = img[:,:,channel_index]        
-    
+    channel = img[:,:,channel_index]   
     # Threshold color channel
     bin_color = np.zeros_like(channel)
     bin_color[(channel >= thresh[0]) & (channel <= thresh[1])] = 1
-    
-    fancy_image = np.dstack((channel, channel, channel))
-    mpimg.imsave("fancy/channel_%d.jpg" % channel_index, fancy_image)
+    #binchannel = channel * bin_color
+    #fancy_image = np.dstack((binchannel, binchannel, binchannel))
+    #mpimg.imsave("fancy/channel_%d_thr%d_%d.jpg" % (channel_index, thresh[0], thresh[1]), fancy_image)
 
     return bin_color
 
 def mag_thresh(image, sobel_kernel=3, mag_thresh=(0, 255)):
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)[:,:,2]
+    hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
+    # 105, 255 L, c2 (de van benne tul sok vilagos)
+# 160, 255 c3
+    #mpimg.imsave("fancy/channel0.jpg", grayto3(hls[:,:,0]))
+    #mpimg.imsave("fancy/channel1.jpg", grayto3(hls[:,:,1]))
+    #mpimg.imsave("fancy/channel2.jpg", grayto3(hls[:,:,2]))
+    
+    l = hls[:,:,1] * color_thresh(hls, 1, (105, 255)) * 0.6
+    s = hls[:,:,2] * color_thresh(hls, 2, (160, 255)) * 1.2
+    gray = np.maximum(np.uint8(s), np.uint8(l))
+    gray2 = grayto3(gray)
+    # mpimg.imsave("fancy/prepgray_thr%d_%d.jpg" % (mag_thresh[0], mag_thresh[1]), gray2)
+
+    
+    
     sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize = sobel_kernel)
     sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize = sobel_kernel)
     magnitude = np.sqrt(sobelx**2 + sobely**2)
@@ -123,25 +150,23 @@ def color_sobel_threshold(img, sobel_kernel, color_space, **kwargs):
         fancy_name += "_%s_%s_%s" % (kw, ('%3.2f' % kwargs[kw][0]).rstrip('0').rstrip('.'),
                                          ('%3.2f' % kwargs[kw][1]).rstrip('0').rstrip('.'))
    
-    # No filter by default, only what is specified. Color is exception, currently it is mandatory 
+    # Currently color is & (and), others are | (or'd)
     target_color = cv2.cvtColor(img, color_space)
     bin_c1 = color_thresh(target_color, 0, c1_threshold) if c1_threshold else np.ones_like(img[:,:,0])
     bin_c2 = color_thresh(target_color, 1, c2_threshold) if c2_threshold else np.ones_like(img[:,:,0])
-    bin_c3 = color_thresh(target_color, 2, c3_threshold) if c3_threshold else np.ones_like(img[:,:,0]
-                                                                                           
-                                                                                           
-                                                                                           )
-    bin_xabs = abs_sobel_thresh(img, sobel_kernel, xabs_threshold) if xabs_threshold else np.ones_like(bin_c1)
-    bin_mag = mag_thresh(img, sobel_kernel, mag_threshold) if mag_threshold else np.ones_like(bin_c1)
-    bin_dir = dir_thresh(img, sobel_kernel, dir_threshold)  if dir_threshold else np.ones_like(bin_c1)
+    bin_c3 = color_thresh(target_color, 2, c3_threshold) if c3_threshold else np.ones_like(img[:,:,0])
+    
+    bin_xabs = abs_sobel_thresh(img, sobel_kernel, xabs_threshold) if xabs_threshold else np.zeros_like(bin_c1)
+    bin_mag = mag_thresh(img, sobel_kernel, mag_threshold) if mag_threshold else np.zeros_like(bin_c1)
+    bin_dir = dir_thresh(img, sobel_kernel, dir_threshold)  if dir_threshold else np.zeros_like(bin_c1)
  
     combined = np.zeros_like(bin_c1)
     combined[
         (bin_c1 == 1) &
         (bin_c2 == 1) &
-        (bin_c3 == 1) &
-        (bin_mag == 1) &
-        (bin_dir == 1) &
+        (bin_c3 == 1) |
+        (bin_mag == 1) |
+        (bin_dir == 1) |
         (bin_xabs == 1)] = 255
 
 
@@ -186,27 +211,41 @@ undistorted = calib.undistort(mpimg.imread("test_images/test5.jpg"))
 #xx = mpimg.imsave("fancy/threshold_colorconvert_HLS_12_.jpg", np.dstack([np.zeros_like(target_color[:,:,2]), target_color[:,:,1], target_color[:,:,2]]))
 # =============================================================================
 
-mint = 0
-maxt = 255
-thr = 50
+
+mint = 30
+maxt = 170
+thr = 8
 mi = mint
 
 
-# 98, 255 c2 (de van benne tul sok vilagos)
+# 105, 255 L, c2 (de van benne tul sok vilagos)
 # 160, 255 c3
-fixed_max = False
-while mi < maxt:
-    ma = maxt if fixed_max else min(maxt, mi + thr)
-    
-    while ma <= maxt:
-        color_sobel_threshold(undistorted, 5, cv2.COLOR_RGB2HLS, fancy = True, c2_threshold = (mi, ma))
-        
-        if ma == maxt:
-            break
-        
-        ma = min(maxt, ma + thr)
 
-    mi += thr
+# 150, 255 C2 maghoz?
+fixed_max = True
+
+# =============================================================================
+# while mi < maxt:
+#     ma = maxt if fixed_max else min(maxt, mi + thr)
+#     
+#     while ma <= maxt:
+#         color_sobel_threshold(undistorted, 3, cv2.COLOR_RGB2HLS, fancy = True, c3_threshold = (mi, ma))
+#        
+#         if ma == maxt:
+#             break
+#         
+#         ma = min(maxt, ma + thr)
+# 
+#     mi += thr
+# # 30, 170 mag
+# =============================================================================
+color_sobel_threshold(undistorted, 3, cv2.COLOR_RGB2HLS, fancy = True,
+                      mag_threshold = (30, 170),
+                      c2_threshold = (105, 255),
+                      c3_threshold = (160, 255),
+                      )
+
+
 
 # xabs: 20,140
 # hls chan2 145, 255
