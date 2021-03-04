@@ -242,10 +242,11 @@ fixed_max = True
 color_sobel_threshold(undistorted, 3, cv2.COLOR_RGB2HLS, fancy = True,
                       mag_threshold = (30, 170),
                       c2_threshold = (105, 255),
-                      c3_threshold = (160, 255),
+                      c3_threshold = (170, 255),
                       )
 
 
+#perspective ll ul ur lr (255, 677), (597, 448), (687, 448), (1051, 677)
 
 # xabs: 20,140
 # hls chan2 145, 255
