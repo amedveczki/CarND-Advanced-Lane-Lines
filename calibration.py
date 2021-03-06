@@ -7,7 +7,7 @@ import pickle
 class calibration:
     CACHE_FILE = "calib.pickle"
     
-    def __init__(self, try_load = False, fancy = False):
+    def __init__(self, try_load = False, fancy = None):
        self.fancy = fancy
        if try_load:
            try:
@@ -47,7 +47,7 @@ class calibration:
                 # For doc/debug
                 if self.fancy:
                     image = cv2.drawChessboardCorners(image, (corners_x, corners_y), corners, True)
-                    mpimg.imsave("fancy/chess_%d.png" % images_path.index(path), image)
+                    self.fancy.save("chess_%d" % images_path.index(path), image)
     
         # Finally use data to calibrate camera and return matrix
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
@@ -66,6 +66,6 @@ class calibration:
         undistorted = cv2.undistort(image, self.mtx, self.dist, None, self.mtx)
         
         if self.fancy:
-            mpimg.imsave("fancy/undistorted.png", undistorted)
+            self.fancy.save("undistorted", undistorted)
         
         return undistorted

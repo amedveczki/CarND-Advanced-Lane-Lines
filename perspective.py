@@ -1,22 +1,39 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import cv2
-import matplotlib.image as mpimg
-
 
 class perspective:
-    def __init__(self, ll, ul, ur, lr, offset, img):
-        src = np.float32([[ll, ul, ur, lr]])
-        dst = np.float32([
-            [offset, img.shape[0] - 1],
-             [offset, 0], # UL
-             [img.shape[1] - offset, 0], # UR
-             [img.shape[1] - offset, img.shape[0] - 1]
+    def __init__(self, ll, ul, ur, lr, offset, shape = None):
+        self.src = np.float32([[ll, ul, ur, lr]])
+        self.offset = offset
+        self.M = self.IM = None
+        
+        # it was much prettier and would need a refactor its usage but I needed to create it before
+        # having any images (late-init)
+        if shape:
+            self.create_matrix(shape)
+            
+    def create_matrix(self, shape):
+        self.dst = np.float32([
+            [self.offset, shape[0] - 1],
+             [self.offset, 0], # UL
+             [shape[1] - self.offset, 0], # UR
+             [shape[1] - self.offset, shape[0] - 1]
              ])
-        self.M = cv2.getPerspectiveTransform(src, dst)
+        self.M = cv2.getPerspectiveTransform(self.src, self.dst)
+        _, self.IM = cv2.invert(self.M)
         
     def warp(self, image):
+        if self.M is None:
+            self.create_matrix(image.shape)
+            
         return cv2.warpPerspective(image, self.M, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR)
+
+    def unwarp(self, image):
+        if self.M is None:
+            self.create_matrix(image.shape)
+            
+        return cv2.warpPerspective(image, self.IM, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR)
 
 
 # =============================================================================

@@ -87,7 +87,7 @@ def color_sobel_threshold(img, sobel_kernel, color_space, **kwargs):
         dir_threshold = None
     
     fancy_name = ""
-    fancy = False
+    fancy = None
     
     for kw in kwargs.keys():
         if kw == "c1_threshold":
@@ -103,7 +103,7 @@ def color_sobel_threshold(img, sobel_kernel, color_space, **kwargs):
         elif kw == "dir_threshold":
             dir_threshold = kwargs[kw]
         elif kw == "fancy" and kwargs[kw]:
-            fancy = True
+            fancy = kwargs[kw]
             continue
         else:
             raise Exception("Invalid kwarg: %s", kw)
@@ -134,7 +134,7 @@ def color_sobel_threshold(img, sobel_kernel, color_space, **kwargs):
 
     if fancy:
         fancy_image = np.dstack((combined, bin_c2, bin_c3))
-        mpimg.imsave("fancy/threshold_%s.jpg" % fancy_name, fancy_image)
+        fancy.save("threshold_%s" % fancy_name, fancy_image)
 
     return combined
 
