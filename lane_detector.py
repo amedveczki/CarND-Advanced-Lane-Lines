@@ -3,7 +3,7 @@
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-
+import collections
 
 class lane_detector:
     STATE_INIT = 0 # first start or we are completely lost
@@ -12,17 +12,57 @@ class lane_detector:
     MAX_UNCERTAIN_FRAMES = 5 # TODO test
 
     NUM_SLIDING_WINDOWS = 9
-    SLIDING_WINDOW_MARGIN = 100
+    SLIDING_WINDOW_MARGIN = 70
     MIN_PIXELS_TO_RECENTER_WINDOW = 50
 
-    POLY_WINDOW_MARGIN = 100
+    POLY_WINDOW_MARGIN = 70
+    
+    MIN_CURVE_RADIUS = 850
+    
+    KEEP_LAST_FIT = True # Keep last fit
+    
+    MAX_DRAW_AVERAGE=4 # polynomials are drawn based on this amount of frames
     
     def __init__(self, persp, fancy = None):
         self.state = self.STATE_INIT
         self.fancy = fancy
         self.ploty = None
         self.persp = persp
+        self.uncertain_frames = self.MAX_UNCERTAIN_FRAMES
+        self.left_fits = collections.deque(maxlen = self.MAX_DRAW_AVERAGE)
+        self.right_fits = collections.deque(maxlen = self.MAX_DRAW_AVERAGE)
         
+        self.left_fit = self.right_fit = self.left_curverad = self.right_curverad = None
+        
+    def diff(self,a,b):
+        return max(a,b)/min(a,b)
+    
+    def sanity_check(self, left_curverad, right_curverad,
+                     left_fit, right_fit):
+        busted = False
+        
+        if self.left_curverad is not None:
+            if self.diff(left_curverad, self.left_curverad) > 0.1:
+                busted = True
+                
+        if not busted and self.right_curverad is not None:
+            if self.diff(right_curverad, self.right_curverad) > 0.1:
+                busted = True
+        
+        if left_curverad < self.MIN_CURVE_RADIUS or right_curverad < self.MIN_CURVE_RADIUS:
+            busted = True
+            
+        if busted:
+            self.uncertain_frames += 1
+            
+            if self.uncertain_frames > self.MAX_UNCERTAIN_FRAMES:
+                return self.STATE_INIT
+            
+            return self.STATE_UNCERTAIN
+        
+        self.uncertain_frames = 0
+        return self.STATE_OK
+          
     def process(self, warped, undist):
         if self.ploty is None:
             self.ploty = np.linspace(0, warped.shape[0]-1, warped.shape[0])
@@ -49,27 +89,45 @@ class lane_detector:
 
         print("Left: %d meter right: %d meter" % (left_curverad, right_curverad))
 
-        # TODO: sanity check!!!!!!!!!!!!!!
-     
+        
+        self.state = self.sanity_check(left_curverad, right_curverad,
+                                       left_fit, right_fit)
+        
         if self.fancy:
             ## Visualization ##
             # Colors in the left and right lane regions
             out_img[lefty, leftx] = [255, 0, 0]
             out_img[righty, rightx] = [0, 0, 255]
+            out_img[np.uint16(self.ploty), np.uint16(left_fitx)] = [255, 255, 0]
+            out_img[np.uint16(self.ploty), np.uint16(right_fitx)] = [0, 255, 255]
+
+            self.fancy.save("lane_detector_%d_%d" % (left_curverad, right_curverad), out_img)
+
+        def first_or_second_avg(a,b):
+            if b is None:
+                return a
             
-            self.fancy.save("lane_detector", out_img)
+            return (a+b)/2
+                    
+        if self.state == self.STATE_OK:
+            self.left_fit = first_or_second_avg(left_fit, self.left_fit)
+            self.right_fit = first_or_second_avg(right_fit, self.right_fit)
+            self.left_fits.append(left_fit)
+            self.right_fits.append(right_fit)
 
-        self.left_fit = left_fit
-        self.right_fit = right_fit
+            self.left_curverad = left_curverad
+            self.right_curverad = right_curverad
+        else:
+            if False and len(self.left_fits) and (not self.KEEP_LAST_FIT or len(self.left_fits) > 1):
+                self.left_fits.pop()
+                self.right_fits.pop()
+                                
+            if self.state == self.STATE_INIT:
+                self.left_curverad = self.right_curverad = None
         
-        # TODO?
-        # Plots the left and right polynomials on the lane lines
-        # plt.plot(left_fitx, ploty, color='yellow')
-        # plt.plot(right_fitx, ploty, color='yellow')
 
-        self.state = self.STATE_OK
-        projback = self.project_back(undist, warped, left_fitx, right_fitx)
-        
+        projback = self.project_back(undist, warped)
+
         if self.fancy:
             self.fancy.save("project_back", projback)
             
@@ -95,12 +153,10 @@ class lane_detector:
         rightx = nonzerox[right_lane_inds]
         righty = nonzeroy[right_lane_inds]
 
-        # Fit new polynomials
-        _, _, left_fitx, right_fitx = self.fit_poly(leftx, lefty, rightx, righty)
-        
         ## Visualization ##
         # Create an image to draw on and an image to show the selection window
-        out_img = np.dstack((binary_warped, binary_warped, binary_warped))*255
+        out_img = np.dstack((binary_warped, binary_warped, binary_warped))
+        
         window_img = np.zeros_like(out_img)
         # Color in left and right line pixels
         out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
@@ -108,12 +164,17 @@ class lane_detector:
 
         # Generate a polygon to illustrate the search window area
         # And recast the x and y points into usable format for cv2.fillPoly()
-        left_line_window1 = np.array([np.transpose(np.vstack([left_fitx-self.POLY_WINDOW_MARGIN, self.ploty]))])
-        left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([left_fitx+self.POLY_WINDOW_MARGIN, 
+        
+        margin = self.POLY_WINDOW_MARGIN
+        if self.state  == self.STATE_UNCERTAIN:
+            margin *= 0.8
+            
+        left_line_window1 = np.array([np.transpose(np.vstack([self.left_fitx-margin, self.ploty]))])
+        left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([self.left_fitx+margin, 
                                   self.ploty])))])
         left_line_pts = np.hstack((left_line_window1, left_line_window2))
-        right_line_window1 = np.array([np.transpose(np.vstack([right_fitx-self.POLY_WINDOW_MARGIN, self.ploty]))])
-        right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_fitx+self.POLY_WINDOW_MARGIN, 
+        right_line_window1 = np.array([np.transpose(np.vstack([self.right_fitx-margin, self.ploty]))])
+        right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([self.right_fitx+margin, 
                                   self.ploty])))])
         right_line_pts = np.hstack((right_line_window1, right_line_window2))
 
@@ -121,17 +182,22 @@ class lane_detector:
         cv2.fillPoly(window_img, np.int_([left_line_pts]), (0,255, 0))
         cv2.fillPoly(window_img, np.int_([right_line_pts]), (0,255, 0))
         result = cv2.addWeighted(out_img, 1, window_img, 0.3, 0)
-        
-        plt.title("around poly")
-        plt.imshow(result)
-        # Plot the polynomial lines onto the image
-        plt.plot(left_fitx, self.ploty, color='yellow')
-        plt.plot(right_fitx, self.ploty, color='yellow')
-        ## End visualization steps ##
-        plt.show()
+
         return leftx, lefty, rightx, righty, result
 
-    def project_back(self, undist, warped, left_fitx, right_fitx):
+    def project_back(self, undist, warped):
+
+        if len(self.left_fits) == 0:
+            return undist
+        
+        # Get the average of the last N polys and create new Xs for them
+        left_fit = sum(self.left_fits)/len(self.left_fits)
+        right_fit = sum(self.right_fits)/len(self.right_fits)
+        
+        left_fitx = left_fit[0]*self.ploty**2 + left_fit[1]*self.ploty + left_fit[2]
+        right_fitx = right_fit[0]*self.ploty**2 + right_fit[1]*self.ploty + right_fit[2]
+        
+        
         # Project back the lines
         # Create an image to draw the lines on
         warp_zero = np.zeros_like(warped).astype(np.uint8)
@@ -149,9 +215,6 @@ class lane_detector:
         newwarp = self.persp.unwarp(color_warp) 
         # Combine the result with the original image
         result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)
-        plt.title("Project_back")
-        plt.imshow(result)
-        plt.show()
         return result
 
 
@@ -232,7 +295,7 @@ class lane_detector:
         left_fit = np.polyfit(lefty, leftx, 2)
         right_fit = np.polyfit(righty, rightx, 2)
         # Generate x and y values for plotting
-        left_fitx = left_fit[0]*self.ploty**2 + left_fit[1]*self.ploty + left_fit[2]
-        right_fitx = right_fit[0]*self.ploty**2 + right_fit[1]*self.ploty + right_fit[2]
+        self.left_fitx = left_fit[0]*self.ploty**2 + left_fit[1]*self.ploty + left_fit[2]
+        self.right_fitx = right_fit[0]*self.ploty**2 + right_fit[1]*self.ploty + right_fit[2]
         
-        return left_fit, right_fit, left_fitx, right_fitx
+        return left_fit, right_fit, self.left_fitx, self.right_fitx

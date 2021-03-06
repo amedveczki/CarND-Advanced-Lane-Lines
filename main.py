@@ -38,7 +38,7 @@ import matplotlib.image as mpimg
 import glob
 import matplotlib.pyplot as plt
 
-
+import numpy as np
 import cv2
 
 
@@ -46,6 +46,7 @@ class fancy_saver:
     def __init__(self, path = "fancy/"):
         self.path = path
         self.frame = 0
+        self.step = 0
     
     def next_frame(self):
         self.frame += 1
@@ -70,12 +71,18 @@ PUR = [700, 445]
 PLR = [1176, 688]
 
 persp = perspective(PLL, PUL, PUR, PLR, PERSPECTIVE_OFFSET)
+
+mask = np.uint8(mpimg.imread("mask_undist.png")[:,:,0]*255) # couldn't get rid of the alpha channel
+#mask = calib.undistort(mask)
+#mpimg.imsave("mask_undist.png", mask)
+
+
+
 ldec = lane_detector(persp, fancy)
 
 def handle_frame(img):
     if fancy:
         fancy.next_frame()
-        
     undistorted = calib.undistort(img)
 
     thresh = color_sobel_threshold(undistorted, 3, cv2.COLOR_RGB2HLS, fancy = fancy,
@@ -83,15 +90,16 @@ def handle_frame(img):
                       c2_threshold = (105, 255),
                       c3_threshold = (170, 255),
                       )
+    masked = cv2.bitwise_and(thresh, mask)
 
 
-    warped = persp.warp(thresh)
+    warped = persp.warp(masked)
     return ldec.process(warped, undistorted)
 
 
 from moviepy.editor import VideoFileClip
 
-clip1 = VideoFileClip("project_video.mp4").subclip(0,.2)
+clip1 = VideoFileClip("project_video.mp4").subclip(20,22)
 out_clip = clip1.fl_image(handle_frame) 
 output = "out.mp4"
 
