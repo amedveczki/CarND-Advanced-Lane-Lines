@@ -1,35 +1,5 @@
 # -*- coding: utf-8 -*-
 
-# Plan:
-# 1. Camera calibration (9x6 chessboard)
-#  - grayscale conversion
-#  - find chessboard
-
-# 2. Undistort using camera matrix
-# 3. Color threshold + Gradient threshold
-#  - HSL vs HSV vs..., check which would be best for what
-# 4. Perspective transformation (with hardcoded src-dst coordinates)
-# 5. Detect left/right lane pixels (candidates)
-#  a. First run or after too many failures
-#   - Create histogram based on the lower part of the image
-#   - Starting X will be the highest values in the histogram on left/right side
-#   - Capture left/right pixels in the current window (which we will slide upwards)
-#   - Use mean X pixel value as next starting point for next window
-#  b. Last frame was OK
-#   - Use last polynomials for windowing
-
-# 6. Sanity check
-#  - If failed, skip to draw (after too many failed frames, reset and try step 5
-#  - check for similar curvature (how?)
-#  - Checking that they are separated by approximately the right distance horizontally
-#  - Checking that they are roughly parallel
-
-# 7. Try to fit polynomial on the lanes
-#  - if success, in next frame we use this for windowing
-#  - Measure curvature (should be ~1km)
- 
-# 8. Draw lanes and fill with color
-
 from calibration import calibration
 from thresholds import color_sobel_threshold
 from perspective import perspective
@@ -42,8 +12,10 @@ import numpy as np
 import cv2
 
 
+# This is used as a 'picture-debugger' and is given to components if needed.
+# Keeps track of counters so things will be in order in the output folder
 class fancy_saver:
-    def __init__(self, path = "fancy/"):
+    def __init__(self, path = "fancy_for_doc2/"):
         self.path = path
         self.frame = 0
         self.step = 0
@@ -58,53 +30,102 @@ class fancy_saver:
 
 fancy = fancy_saver()
 
+
+# 1. step - camera calibration
 CALIBRATION_IMAGES = "camera_cal/*.jpg"
 
 calib = calibration(True, fancy)
 calib.calibrate(glob.glob(CALIBRATION_IMAGES), 9, 6)
 
+# 2. step - prepare perspective transformation matrix (and its inverse)
 PERSPECTIVE_OFFSET = 450
 
-PLL = [344, 688]
-PUL = [620, 445]
-PUR = [700, 445]
-PLR = [1176, 688]
 
-persp = perspective(PLL, PUL, PUR, PLR, PERSPECTIVE_OFFSET)
+PLL = [236,719]
+PUL = [589,455]
+PUR = [701,455]
+PLR = [1179, 719]
 
-mask = np.uint8(mpimg.imread("mask_undist.png")[:,:,0]*255) # couldn't get rid of the alpha channel
+#PUL = [585, 460]
+#PLL = [203, 720]
+#PLR = [1127, 720]
+#PUR = [695, 460]
 
+persp = perspective(PLL, PUL, PUR, PLR, PERSPECTIVE_OFFSET, mpimg.imread("persptest.jpg"))
+
+
+
+
+# #==========
+
+# img = mpimg.imread("persptest.jpg")
+
+# minl = 0
+# maxl = 1
+# step = 1
+
+
+# curl = minl
+# while curl <= maxl:
+#      curr = minl
+#      while curr <= maxl:
+#         persp = perspective(PLL, [PUL[0] + curl, PUL[1]], [PUR[0] + curr, PUR[1]], PLR, PERSPECTIVE_OFFSET)
+#         warped = persp.warp(img)
+#         mpimg.imsave("warptest/warped_%d_%d.jpg" % (curl, curr), warped)
+        
+#         if curr == maxl:
+#             break
+#         curr = min(maxl, curr + step)
+
+#      if curl == maxl:
+#         break
+#      curl = min(maxl, curl + step)
+
+
+# import sys
+# sys.exit(1)
+#==========
+
+# 3. step: load mask which is used to hide the car and things far from the lanes
+mask = np.uint8(mpimg.imread("mask.png")[:,:,0]*255) # couldn't get rid of the alpha channel
+
+# 4. Lane detector - this contains lane pixel detection (rectangle/previous polynomial area), polynomial detection
+#                    sanity check and projecting the lanes back
 ldec = lane_detector(persp, fancy)
 
+# Function which is used to process each frame
 def handle_frame(img):
+    # Increment the counter in our fancy image saver
     if fancy:
         fancy.next_frame()
+
+    # Use our calibrated camera matrix to undistort the picture
     undistorted = calib.undistort(img)
 
+    # We are using a kernel size of 3, color threshold: HLS, L channel is used (105-255), S channel (170,255).
+    # magnitude threshold is 30, 170, which also uses L and S with different weights, but those cannot be set as method parameters.
     thresh = color_sobel_threshold(undistorted, 3, cv2.COLOR_RGB2HLS, fancy = fancy,
                       mag_threshold = (30, 170),
                       c2_threshold = (105, 255),
                       c3_threshold = (170, 255),
                       )
-    masked = cv2.bitwise_and(thresh, mask)
 
+    masked = cv2.bitwise_and(thresh, mask)
+    fancy.save("thresh_after_mask", masked)
 
     warped = persp.warp(masked)
+    fancy.save("warped", warped)
     return ldec.process(warped, undistorted)
 
 
 from moviepy.editor import VideoFileClip
 
-clip1 = VideoFileClip("project_video.mp4")
+# Save video
+clip1 = VideoFileClip("project_video.mp4").subclip(20,20.1)
 out_clip = clip1.fl_image(handle_frame) 
 output = "out.mp4"
 
 out_clip.write_videofile(output, audio=False)
-
-
-#out_img = ldec.process(warped, undistorted)
-#plt.imshow(out_img)
-#plt.show()
 
 
 

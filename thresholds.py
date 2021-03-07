@@ -4,14 +4,14 @@ import cv2
 import matplotlib.image as mpimg
 
 
+# Absolut sobel treshold in X direction.
 def abs_sobel_thresh(img, sobel_kernel=3, thresh=(0, 255), orient='x'):
     hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
-    # 105, 255 L, c2 (de van benne tul sok vilagos)
-# 160, 255 c3
     #mpimg.imsave("fancy/channel0.jpg", grayto3(hls[:,:,0]))
     #mpimg.imsave("fancy/channel1.jpg", grayto3(hls[:,:,1]))
     #mpimg.imsave("fancy/channel2.jpg", grayto3(hls[:,:,2]))
     
+    # Currently this is weighed and is using LS from HLS
     l = hls[:,:,1] * color_thresh(hls, 1, (105, 255)) * 0.6
     s = hls[:,:,2] * color_thresh(hls, 2, (160, 255)) * 1.2
     gray = np.maximum(np.uint8(s), np.uint8(l))
@@ -45,14 +45,16 @@ def color_thresh(img, channel_index, thresh):
 
 def mag_thresh(image, sobel_kernel=3, mag_thresh=(0, 255)):
     hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
-    # 105, 255 L, c2 (de van benne tul sok vilagos)
-# 160, 255 c3
     #mpimg.imsave("fancy/channel0.jpg", grayto3(hls[:,:,0]))
     #mpimg.imsave("fancy/channel1.jpg", grayto3(hls[:,:,1]))
     #mpimg.imsave("fancy/channel2.jpg", grayto3(hls[:,:,2]))
     
+    # Weighed l, s with separate thresholds, as this seemed to give the best results on example images (which had shadow + yellow + etc)
     l = hls[:,:,1] * color_thresh(hls, 1, (105, 255)) * 0.6
     s = hls[:,:,2] * color_thresh(hls, 2, (160, 255)) * 1.2
+
+    # Get the maximum of each
+
     gray = np.maximum(np.uint8(s), np.uint8(l))    
     
     sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize = sobel_kernel)
@@ -65,7 +67,7 @@ def mag_thresh(image, sobel_kernel=3, mag_thresh=(0, 255)):
     return binary
     
 def dir_thresh(image, sobel_kernel=3, thresh=(0, np.pi/2)):
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)[:,:,2] # not really gray anymore
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)[:,:,2] # not really gray anymore. But it's not used in the final versoin
     sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize = sobel_kernel)
     sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize = sobel_kernel)
     
@@ -85,6 +87,7 @@ def color_sobel_threshold(img, sobel_kernel, color_space, **kwargs):
     fancy_name = ""
     fancy = None
     
+    # if channels and weighing in gradients could be given it would be much more versatile. But it was good enough for trying many combinations
     for kw in kwargs.keys():
         if kw == "c1_threshold":
             c1_threshold = kwargs[kw]
@@ -104,6 +107,7 @@ def color_sobel_threshold(img, sobel_kernel, color_space, **kwargs):
         else:
             raise Exception("Invalid kwarg: %s", kw)
             
+        # Prepare a fancy name with the given parameters - this was useful if many combinations are generated for a single image
         # Dir thresholds are float others are not, remove trailing zeroes at the end after %f
         fancy_name += "_%s_%s_%s" % (kw, ('%3.2f' % kwargs[kw][0]).rstrip('0').rstrip('.'),
                                          ('%3.2f' % kwargs[kw][1]).rstrip('0').rstrip('.'))
@@ -113,11 +117,19 @@ def color_sobel_threshold(img, sobel_kernel, color_space, **kwargs):
     bin_c1 = color_thresh(target_color, 0, c1_threshold) if c1_threshold else np.ones_like(img[:,:,0])
     bin_c2 = color_thresh(target_color, 1, c2_threshold) if c2_threshold else np.ones_like(img[:,:,0])
     bin_c3 = color_thresh(target_color, 2, c3_threshold) if c3_threshold else np.ones_like(img[:,:,0])
+
     
     bin_xabs = abs_sobel_thresh(img, sobel_kernel, xabs_threshold) if xabs_threshold else np.zeros_like(bin_c1)
     bin_mag = mag_thresh(img, sobel_kernel, mag_threshold) if mag_threshold else np.zeros_like(bin_c1)
     bin_dir = dir_thresh(img, sobel_kernel, dir_threshold)  if dir_threshold else np.zeros_like(bin_c1)
  
+
+    # Delete me from final TODO
+    fancy.save("c2", grayto3(bin_c2*255))
+    fancy.save("c3", grayto3(bin_c3*255))
+    fancy.save("bin_mag", grayto3(bin_mag*255))
+
+
     combined = np.zeros_like(bin_c1)
     combined[
         (bin_c1 == 1) &

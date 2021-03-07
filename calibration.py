@@ -5,6 +5,7 @@ import matplotlib.image as mpimg
 import pickle
 
 class calibration:
+    # Calibration cache so startup will be quicker
     CACHE_FILE = "calib.pickle"
     
     def __init__(self, try_load = False, fancy = None):
@@ -49,7 +50,7 @@ class calibration:
                     image = cv2.drawChessboardCorners(image, (corners_x, corners_y), corners, True)
                     self.fancy.save("chess_%d" % images_path.index(path), image)
     
-        # Finally use data to calibrate camera and return matrix
+        # Finally use data to calibrate camera
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
         if ret:
             with open(self.CACHE_FILE, "wb") as file:
@@ -57,6 +58,12 @@ class calibration:
                 print("calibration result were written to %s" % self.CACHE_FILE)
             self.mtx = mtx
             self.dist = dist
+            
+            for path in images_path:
+                image = mpimg.imread(path)
+                undi = self.undistort(image)
+                
+                self.fancy.save("chess_%d_undi" % images_path.index(path), undi)
         else:
             raise Exception("Could not calibrate!")
         
@@ -66,6 +73,7 @@ class calibration:
         undistorted = cv2.undistort(image, self.mtx, self.dist, None, self.mtx)
         
         if self.fancy:
+            self.fancy.save("original", image)
             self.fancy.save("undistorted", undistorted)
         
         return undistorted

@@ -9,7 +9,7 @@ class lane_detector:
     STATE_INIT = 0 # first start or we are completely lost
     STATE_OK = 1 # continue using polynomial+epsilon for searching lane instead of boxes
     STATE_UNCERTAIN = 2 # until MAX_UNCERTAIN_FRAMES we hold onto previous curvature
-    MAX_UNCERTAIN_FRAMES = 4 # TODO test
+    MAX_UNCERTAIN_FRAMES = 2 # TODO test
 
     NUM_SLIDING_WINDOWS = 11
     SLIDING_WINDOW_MARGIN = 85
@@ -17,9 +17,10 @@ class lane_detector:
 
     POLY_WINDOW_MARGIN = 85
     
-    MIN_CURVE_RADIUS = 850
+    MIN_CURVE_RADIUS = 750
+    MAX_CURVE_CHECK = 2000 # don't check radius difference above this (straight line)
     
-    KEEP_LAST_FIT = True # Keep last fit
+    KEEP_LAST_FIT = True # Keep last fit (we wouldn't draw anything if False)
     
     MAX_DRAW_AVERAGE=3 # polynomials are drawn based on this amount of frames
     
@@ -28,29 +29,31 @@ class lane_detector:
         self.fancy = fancy
         self.ploty = None
         self.persp = persp
-        self.uncertain_frames = self.MAX_UNCERTAIN_FRAMES
+        self.uncertain_frames = 0
+
+        # Keeps last MAX_DRAW_AVERAGE
         self.left_fits = collections.deque(maxlen = self.MAX_DRAW_AVERAGE)
         self.right_fits = collections.deque(maxlen = self.MAX_DRAW_AVERAGE)
         
         self.left_fit = self.right_fit = self.left_curverad = self.right_curverad = None
         
     def diff(self,a,b):
-        return max(a,b)/min(a,b)
+        return max(a,b)/min(a,b)-1
     
     def sanity_check(self, left_curverad, right_curverad,
                      left_fit, right_fit):
         busted = False
         
-        if self.left_curverad is not None:
-            if self.diff(left_curverad, self.left_curverad) > 0.1:
+        if self.left_curverad is not None and self.left_curverad < self.MAX_CURVE_CHECK and left_curverad > self.MAX_CURVE_CHECK:
+            if self.diff(left_curverad, self.left_curverad) > 0.3:
                 busted = True
                 
-        if not busted and self.right_curverad is not None:
-            if self.diff(right_curverad, self.right_curverad) > 0.1:
+        if not busted and self.right_curverad is not None and self.right_curverad < self.MAX_CURVE_CHECK and right_curverad > self.MAX_CURVE_CHECK:
+            if self.diff(right_curverad, self.right_curverad) > 0.3:
                 busted = True
         
-        #if left_curverad < self.MIN_CURVE_RADIUS or right_curverad < self.MIN_CURVE_RADIUS:
-        #    busted = True
+        if left_curverad < self.MIN_CURVE_RADIUS or right_curverad < self.MIN_CURVE_RADIUS:
+            busted = True
             
         if busted:
             self.uncertain_frames += 1
@@ -62,6 +65,37 @@ class lane_detector:
         
         self.uncertain_frames = 0
         return self.STATE_OK
+
+    def calc_radius_and_carpos(self, imgshape, left_fit, left_fitx, right_fitx):
+        lane_width_meters = 3.7 # meters
+        lane_width_pixels = 365 # there are 365 pixels between the left and right at the bottom of bird-eye view (old value: 700)
+        # Define conversions in x and y from pixels space to meters
+
+        dashed_line_pixel = 75 # number of pixels a dashed line is
+        dashed_line_meter = 3.048 # 10 feet is one line : https://news.osu.edu/slow-down----those-lines-on-the-road-are-longer-than-you-think/
+        ym_per_pix = dashed_line_meter/dashed_line_pixel
+        xm_per_pix = lane_width_meters/lane_width_pixels
+
+        # Just use the originals as it doesn't seems to be working :(
+        ym_per_pix = 30/720 # meters per pixel in y dimension
+        xm_per_pix = 3.7/700 # meters per pixel in x dimension
+
+        
+        # We'll choose the maximum y-value, corresponding to the bottom of the image
+        y_eval = np.max(self.ploty)
+        left_lane = left_fit[0]*y_eval**2 + left_fit[1]*y_eval + left_fit[2]
+
+        carpos = (imgshape[1]/2 - left_lane)/lane_width_pixels
+
+        left_fit_cr = np.polyfit(self.ploty*ym_per_pix, left_fitx*xm_per_pix, 2)
+        right_fit_cr = np.polyfit(self.ploty*ym_per_pix, right_fitx*xm_per_pix, 2)
+
+
+        left_curverad = (1+(2*left_fit_cr[0]*y_eval*ym_per_pix+left_fit_cr[1])**2)**1.5/abs(2*left_fit_cr[0])
+        right_curverad = (1+(2*right_fit_cr[0]*y_eval*ym_per_pix+right_fit_cr[1])**2)**1.5/abs(2*right_fit_cr[0])
+
+        return left_curverad, right_curverad, carpos, carpos*lane_width_meters
+        # print("Left: %d meter right: %d meter" % (left_curverad, right_curverad))
           
     def process(self, warped, undist):
         if self.ploty is None:
@@ -74,21 +108,7 @@ class lane_detector:
 
         left_fit, right_fit, left_fitx, right_fitx = self.fit_poly(leftx, lefty, rightx, righty)
 
-        # Define conversions in x and y from pixels space to meters
-        ym_per_pix = 30/720 # meters per pixel in y dimension
-        xm_per_pix = 3.7/700 # meters per pixel in x dimension
-
-        left_fit_cr = np.polyfit(self.ploty*ym_per_pix, left_fitx*xm_per_pix, 2)
-        right_fit_cr = np.polyfit(self.ploty*ym_per_pix, right_fitx*xm_per_pix, 2)
-
-        # We'll choose the maximum y-value, corresponding to the bottom of the image
-        y_eval = np.max(self.ploty)
-
-        left_curverad = (1+(2*left_fit_cr[0]*y_eval*ym_per_pix+left_fit_cr[1])**2)**1.5/abs(2*left_fit_cr[0])
-        right_curverad = (1+(2*right_fit_cr[0]*y_eval*ym_per_pix+right_fit_cr[1])**2)**1.5/abs(2*right_fit_cr[0])
-
-        print("Left: %d meter right: %d meter" % (left_curverad, right_curverad))
-
+        left_curverad, right_curverad, carpos, carpos_meters = self.calc_radius_and_carpos(warped.shape, left_fit, left_fitx, right_fitx)
         
         self.state = self.sanity_check(left_curverad, right_curverad,
                                        left_fit, right_fit)
@@ -127,6 +147,16 @@ class lane_detector:
         
 
         projback = self.project_back(undist, warped)
+
+        if self.state == self.STATE_OK:
+            state_text = "OK"
+        elif self.state == self.STATE_INIT:
+            state_text = "Reinit, bad frames %d" % self.uncertain_frames
+        else:
+            state_text = "NOK, bad frames %d" % self.uncertain_frames
+
+        cv2.putText(projback, "Left radius %4dm right radius %4dm Camera position is %3.1f (%1.1f meter from left lane) state %s" % (left_curverad, right_curverad, carpos, carpos_meters, state_text),
+                (0, 30), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255))
 
         if self.fancy:
             self.fancy.save("project_back", projback)

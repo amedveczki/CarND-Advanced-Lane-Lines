@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import cv2
+import matplotlib.image as mpimg
+
 
 class perspective:
-    def __init__(self, ll, ul, ur, lr, offset, shape = None):
+    def __init__(self, ll, ul, ur, lr, offset, image):
         self.src = np.float32([[ll, ul, ur, lr]])
         self.offset = offset
         self.M = self.IM = None
-        
-        # it was much prettier and would need a refactor its usage but I needed to create it before
-        # having any images (late-init)
-        if shape:
-            self.create_matrix(shape)
+
+        # for doc        
+        # pts = np.array([ll, ul, ur,lr])
+        # pts.reshape((-1, 1, 2))
+        # cv2.polylines(image, [pts] , True, (255, 0, 0), 1)
+        # mpimg.imsave("before_warp_lines.jpg", image)
+        # mpimg.imsave("after_warp_lines.jpg", self.warp(image))
+
             
     def create_matrix(self, shape):
         self.dst = np.float32([
@@ -27,7 +32,9 @@ class perspective:
         if self.M is None:
             self.create_matrix(image.shape)
             
-        return cv2.warpPerspective(image, self.M, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR)
+        retval = cv2.warpPerspective(image, self.M, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR)
+        
+        return retval
 
     def unwarp(self, image):
         if self.M is None:
