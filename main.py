@@ -73,10 +73,6 @@ PLR = [1176, 688]
 persp = perspective(PLL, PUL, PUR, PLR, PERSPECTIVE_OFFSET)
 
 mask = np.uint8(mpimg.imread("mask_undist.png")[:,:,0]*255) # couldn't get rid of the alpha channel
-#mask = calib.undistort(mask)
-#mpimg.imsave("mask_undist.png", mask)
-
-
 
 ldec = lane_detector(persp, fancy)
 
@@ -99,7 +95,7 @@ def handle_frame(img):
 
 from moviepy.editor import VideoFileClip
 
-clip1 = VideoFileClip("project_video.mp4").subclip(20,22)
+clip1 = VideoFileClip("project_video.mp4")
 out_clip = clip1.fl_image(handle_frame) 
 output = "out.mp4"
 

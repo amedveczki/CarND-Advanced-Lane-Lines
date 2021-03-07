@@ -9,19 +9,19 @@ class lane_detector:
     STATE_INIT = 0 # first start or we are completely lost
     STATE_OK = 1 # continue using polynomial+epsilon for searching lane instead of boxes
     STATE_UNCERTAIN = 2 # until MAX_UNCERTAIN_FRAMES we hold onto previous curvature
-    MAX_UNCERTAIN_FRAMES = 5 # TODO test
+    MAX_UNCERTAIN_FRAMES = 4 # TODO test
 
-    NUM_SLIDING_WINDOWS = 9
-    SLIDING_WINDOW_MARGIN = 70
+    NUM_SLIDING_WINDOWS = 11
+    SLIDING_WINDOW_MARGIN = 85
     MIN_PIXELS_TO_RECENTER_WINDOW = 50
 
-    POLY_WINDOW_MARGIN = 70
+    POLY_WINDOW_MARGIN = 85
     
     MIN_CURVE_RADIUS = 850
     
     KEEP_LAST_FIT = True # Keep last fit
     
-    MAX_DRAW_AVERAGE=4 # polynomials are drawn based on this amount of frames
+    MAX_DRAW_AVERAGE=3 # polynomials are drawn based on this amount of frames
     
     def __init__(self, persp, fancy = None):
         self.state = self.STATE_INIT
@@ -49,8 +49,8 @@ class lane_detector:
             if self.diff(right_curverad, self.right_curverad) > 0.1:
                 busted = True
         
-        if left_curverad < self.MIN_CURVE_RADIUS or right_curverad < self.MIN_CURVE_RADIUS:
-            busted = True
+        #if left_curverad < self.MIN_CURVE_RADIUS or right_curverad < self.MIN_CURVE_RADIUS:
+        #    busted = True
             
         if busted:
             self.uncertain_frames += 1
@@ -138,7 +138,10 @@ class lane_detector:
         nonzero = binary_warped.nonzero()
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])
-        
+        margin = self.POLY_WINDOW_MARGIN
+        if self.state  == self.STATE_UNCERTAIN:
+            margin *= 0.8
+            
         left_lane_inds = ((nonzerox > (self.left_fit[0]*(nonzeroy**2) + left_fit[1]*nonzeroy + 
                         left_fit[2] - self.POLY_WINDOW_MARGIN)) & (nonzerox < (left_fit[0]*(nonzeroy**2) + 
                         left_fit[1]*nonzeroy + left_fit[2] + self.POLY_WINDOW_MARGIN)))
@@ -162,19 +165,18 @@ class lane_detector:
         out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
         out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
 
+        # this.left_fitx might be out of date (as it might be averaged/not used)
+        left_fitx = left_fit[0]*self.ploty**2 + left_fit[1]*self.ploty + left_fit[2]
+        right_fitx = right_fit[0]*self.ploty**2 + right_fit[1]*self.ploty + right_fit[2]
+        
         # Generate a polygon to illustrate the search window area
         # And recast the x and y points into usable format for cv2.fillPoly()
-        
-        margin = self.POLY_WINDOW_MARGIN
-        if self.state  == self.STATE_UNCERTAIN:
-            margin *= 0.8
-            
-        left_line_window1 = np.array([np.transpose(np.vstack([self.left_fitx-margin, self.ploty]))])
-        left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([self.left_fitx+margin, 
+        left_line_window1 = np.array([np.transpose(np.vstack([left_fitx-margin, self.ploty]))])
+        left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([left_fitx+margin, 
                                   self.ploty])))])
         left_line_pts = np.hstack((left_line_window1, left_line_window2))
-        right_line_window1 = np.array([np.transpose(np.vstack([self.right_fitx-margin, self.ploty]))])
-        right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([self.right_fitx+margin, 
+        right_line_window1 = np.array([np.transpose(np.vstack([right_fitx-margin, self.ploty]))])
+        right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_fitx+margin, 
                                   self.ploty])))])
         right_line_pts = np.hstack((right_line_window1, right_line_window2))
 

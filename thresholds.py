@@ -53,11 +53,7 @@ def mag_thresh(image, sobel_kernel=3, mag_thresh=(0, 255)):
     
     l = hls[:,:,1] * color_thresh(hls, 1, (105, 255)) * 0.6
     s = hls[:,:,2] * color_thresh(hls, 2, (160, 255)) * 1.2
-    gray = np.maximum(np.uint8(s), np.uint8(l))
-    gray2 = grayto3(gray)
-    # mpimg.imsave("fancy/prepgray_thr%d_%d.jpg" % (mag_thresh[0], mag_thresh[1]), gray2)
-
-    
+    gray = np.maximum(np.uint8(s), np.uint8(l))    
     
     sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize = sobel_kernel)
     sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize = sobel_kernel)
@@ -102,7 +98,7 @@ def color_sobel_threshold(img, sobel_kernel, color_space, **kwargs):
             mag_threshold = kwargs[kw]
         elif kw == "dir_threshold":
             dir_threshold = kwargs[kw]
-        elif kw == "fancy" and kwargs[kw]:
+        elif kw == "fancy":
             fancy = kwargs[kw]
             continue
         else:
