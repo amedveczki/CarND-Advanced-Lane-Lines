@@ -1,6 +1,4 @@
-## Writeup Template
-
-### You can use this file as a template for your writeup if you want to submit it as a markdown file, but feel free to use some other method and submit a pdf if you prefer.
+## Writeup
 
 ---
 
@@ -140,7 +138,8 @@ So radius is computed based on the equation in the lessons, found in `calc_radiu
 
 
 $$
-\frac{middlepoint_x - left\_lane\_bottom_x}{difference\_of\_bottom\_lane\_pixels}
+\frac{middlepoint_x - left\_lane\_bottom_x}{difference\_of\_bottom\_lane\_pixels}
+
 $$
 This gives a [0..1] value where the car is. This can be multiplied with the lane width (3.7) and we get the camera distance from the left lane in meters.
 
